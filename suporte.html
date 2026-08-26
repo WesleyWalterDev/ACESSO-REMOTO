@@ -1,0 +1,597 @@
+<!--
+  Atendimento remoto - painel do suporte
+  Desenvolvido por Wesley Walter
+-->
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel de Suporte</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+  :root {
+    --bg: #0b0f0e; --bg-panel: #121816; --bg-raised: #182220; --line: #23302c;
+    --text: #e7efec; --text-dim: #8ea39a;
+    --accent: #4f9dff; --accent-dim: #245089; --warn: #e0a458; --danger: #e0685b;
+    --mono: 'SF Mono', 'JetBrains Mono', ui-monospace, Consolas, monospace;
+    --sans: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:var(--sans); min-height:100vh; }
+  .topo { display:flex; align-items:center; justify-content:space-between; padding:14px 22px; border-bottom:1px solid var(--line); }
+  .marca { display:flex; align-items:center; gap:10px; }
+  .marca .ponto { width:10px; height:10px; border-radius:50%; background:var(--text-dim); }
+  .marca .ponto.on { background:var(--accent); box-shadow:0 0 8px var(--accent); }
+  .marca span { font-weight:600; letter-spacing:0.02em; }
+  .status-txt { font-family:var(--mono); font-size:12px; color:var(--text-dim); }
+
+  .layout { display:flex; height:calc(100vh - 53px); }
+
+  /* --- barra lateral --- */
+  .sidebar { width:260px; flex-shrink:0; border-right:1px solid var(--line); padding:16px; overflow-y:auto; }
+  .sidebar h2 { margin:0 0 12px; font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-dim); font-weight:600; }
+  .conexao-salva {
+    display:flex; align-items:center; gap:8px; padding:9px 10px; border-radius:8px;
+    background:var(--bg-panel); border:1px solid var(--line); margin-bottom:6px; cursor:pointer; font-size:13px;
+  }
+  .conexao-salva:hover { border-color:var(--accent-dim); }
+  .conexao-salva .ponto-mini { width:7px; height:7px; border-radius:50%; background:var(--text-dim); flex-shrink:0; }
+  .conexao-salva .ponto-mini.on { background:var(--accent); box-shadow:0 0 6px var(--accent); }
+  .conexao-salva .info { flex:1; min-width:0; }
+  .conexao-salva .nickname { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .conexao-salva .codigo { font-family:var(--mono); font-size:11px; color:var(--text-dim); }
+  .conexao-salva .remover { color:var(--text-dim); font-size:16px; line-height:1; padding:2px 4px; }
+  .conexao-salva .remover:hover { color:var(--danger); }
+  .form-nova { margin-top:16px; padding-top:16px; border-top:1px solid var(--line); }
+  .form-nova input { width:100%; margin-bottom:8px; }
+
+  /* --- area principal --- */
+  .principal { flex:1; display:flex; flex-direction:column; min-width:0; }
+  .abas { display:flex; gap:4px; padding:10px 16px 0; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .aba {
+    display:flex; align-items:center; gap:8px; padding:9px 14px; border-radius:8px 8px 0 0;
+    background:var(--bg-panel); font-size:13px; cursor:pointer; border:1px solid var(--line); border-bottom:none;
+  }
+  .aba.ativa { background:var(--bg-raised); font-weight:600; }
+  .aba .fechar-aba { color:var(--text-dim); }
+  .aba .fechar-aba:hover { color:var(--danger); }
+  .conteudo-principal { flex:1; overflow-y:auto; padding:20px 24px; }
+
+  .vazio { text-align:center; color:var(--text-dim); padding:80px 20px; font-size:14px; }
+
+  button {
+    font-family:var(--sans); font-weight:600; font-size:13px; border:none; border-radius:8px;
+    padding:10px 16px; cursor:pointer; background:var(--accent); color:#071726;
+    transition: transform .08s ease, opacity .15s ease;
+  }
+  button:hover { opacity:0.9; } button:active { transform:scale(0.97); }
+  button.secundario { background:var(--bg-raised); color:var(--text); border:1px solid var(--line); }
+  button.mini { padding:7px 11px; font-size:12px; }
+  button:disabled { opacity:0.35; cursor:not-allowed; }
+  input[type=text] {
+    font-family:var(--mono); font-size:14px; letter-spacing:0.06em; background:var(--bg-raised);
+    border:1px solid var(--line); border-radius:8px; color:var(--text); padding:9px 12px;
+  }
+  input[type=text]:focus { outline:none; border-color:var(--accent-dim); }
+  .linha { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+
+  .cartao { background:var(--bg-panel); border:1px solid var(--line); border-radius:10px; padding:20px; margin-bottom:16px; }
+  .cartao h2 { margin:0 0 6px; font-size:13px; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-dim); font-weight:600; }
+  .cartao p.legenda { margin:0 0 14px; color:var(--text-dim); font-size:13px; }
+
+  .atalhos { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+
+  video { width:100%; border-radius:8px; background:#000; margin-top:14px; border:1px solid var(--line); display:none; }
+  video.ativo { display:block; }
+  video:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+  video.controlavel { cursor: crosshair; }
+  video:fullscreen { object-fit: contain; background: #000; }
+  .placeholder-tela { margin-top:14px; border:1px dashed var(--line); border-radius:8px; padding:40px; text-align:center; color:var(--text-dim); font-size:13px; }
+
+  .lista-arquivos { list-style:none; padding:0; margin:12px 0 0; }
+  .lista-arquivos li { display:flex; justify-content:space-between; align-items:center; padding:9px 11px; background:var(--bg-raised); border-radius:6px; margin-bottom:7px; font-size:13px; }
+  .lista-arquivos .barra { height:4px; background:var(--line); border-radius:3px; overflow:hidden; flex:1; margin:0 10px; }
+  .lista-arquivos .barra > div { height:100%; background:var(--accent); width:0%; transition:width .2s; }
+  .lista-arquivos a { color:var(--accent); text-decoration:none; font-weight:600; }
+  .drop { margin-top:12px; border:2px dashed var(--line); border-radius:8px; padding:20px; text-align:center; color:var(--text-dim); cursor:pointer; font-size:13px; }
+  .drop.arraste-sobre { border-color:var(--accent); color:var(--accent); background:rgba(79,157,255,0.06); }
+
+  .modal-sobre {
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6);
+    align-items:center; justify-content:center; z-index:100;
+  }
+  .modal-sobre.aberto { display:flex; }
+  .modal-sobre-caixa {
+    background:var(--bg-panel); border:1px solid var(--line); border-radius:10px;
+    padding:28px; max-width:320px; text-align:center;
+  }
+  .modal-sobre-caixa h3 { margin:0 0 10px; }
+  .modal-sobre-caixa p { color:var(--text-dim); margin:0 0 20px; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+  <div class="marca"><div class="ponto" id="ponto-status"></div><span>Painel de Suporte</span></div>
+  <div style="display:flex; align-items:center; gap:16px;">
+    <div class="status-txt" id="texto-status">pronto</div>
+    <a href="#" onclick="abrirSobre(); return false;" style="font-size:12px; color:var(--text-dim); text-decoration:underline;">Sobre</a>
+  </div>
+</div>
+
+<div class="modal-sobre" id="modal-sobre" onclick="if(event.target===this) fecharSobre()">
+  <div class="modal-sobre-caixa">
+    <h3>Painel de Suporte</h3>
+    <p>Desenvolvido por <strong>Wesley Walter</strong>.</p>
+    <button class="secundario" onclick="fecharSobre()">Fechar</button>
+  </div>
+</div>
+
+<div class="layout">
+
+  <div class="sidebar">
+    <h2>Máquinas salvas</h2>
+    <div id="lista-conexoes-salvas"></div>
+
+    <div class="form-nova">
+      <h2>Nova conexão</h2>
+      <input type="text" id="input-nickname" placeholder="Nome (ex: Loja Centro)">
+      <input type="text" id="input-codigo-novo" placeholder="CÓDIGO" maxlength="6" style="text-transform:uppercase;">
+      <button onclick="adicionarEConectar()" style="width:100%;">Salvar e conectar</button>
+    </div>
+  </div>
+
+  <div class="principal">
+    <div class="abas" id="abas"></div>
+    <div class="conteudo-principal" id="conteudo-principal">
+      <div class="vazio">Conecte-se a uma máquina pela barra lateral para começar.</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function abrirSobre() { document.getElementById('modal-sobre').classList.add('aberto'); }
+function fecharSobre() { document.getElementById('modal-sobre').classList.remove('aberto'); }
+
+let peer = null;
+let peerPronto = false;
+let sessoes = {};          // codigo -> { nickname, dataConn, fastConn, chamada, resolucaoRemota, controleHabilitado, stream, arquivos: [] }
+let sessaoAtivaCodigo = null;
+let conexoesSalvas = [];   // [{nickname, codigo}]
+
+const elStatus = document.getElementById('texto-status');
+const elPonto = document.getElementById('ponto-status');
+
+function atualizarStatusGeral(texto, conectadoAlgum) {
+  elStatus.textContent = texto;
+  elPonto.classList.toggle('on', !!conectadoAlgum);
+}
+
+// --- persistência das conexões salvas (servidor local se existir, senão localStorage) ---
+
+async function carregarConexoesSalvas() {
+  try {
+    const resp = await fetch('/api/conexoes');
+    if (resp.ok) { conexoesSalvas = await resp.json(); renderSidebar(); return; }
+  } catch (e) {}
+  try { conexoesSalvas = JSON.parse(localStorage.getItem('conexoes_salvas') || '[]'); } catch (e) { conexoesSalvas = []; }
+  renderSidebar();
+}
+
+async function persistirConexoesSalvas() {
+  try {
+    const resp = await fetch('/api/conexoes', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(conexoesSalvas),
+    });
+    if (resp.ok) return;
+  } catch (e) {}
+  localStorage.setItem('conexoes_salvas', JSON.stringify(conexoesSalvas));
+}
+
+function adicionarEConectar() {
+  const nickname = document.getElementById('input-nickname').value.trim() || 'Sem nome';
+  const codigo = document.getElementById('input-codigo-novo').value.trim().toUpperCase();
+  if (!codigo) return;
+  if (!conexoesSalvas.find(c => c.codigo === codigo)) {
+    conexoesSalvas.push({ nickname, codigo });
+    persistirConexoesSalvas();
+  }
+  document.getElementById('input-nickname').value = '';
+  document.getElementById('input-codigo-novo').value = '';
+  renderSidebar();
+  conectarSessao(codigo, nickname);
+}
+
+function removerConexaoSalva(codigo, evento) {
+  evento.stopPropagation();
+  conexoesSalvas = conexoesSalvas.filter(c => c.codigo !== codigo);
+  persistirConexoesSalvas();
+  renderSidebar();
+}
+
+function renderSidebar() {
+  const container = document.getElementById('lista-conexoes-salvas');
+  container.innerHTML = '';
+  conexoesSalvas.forEach(c => {
+    const div = document.createElement('div');
+    div.className = 'conexao-salva';
+    div.onclick = () => conectarSessao(c.codigo, c.nickname);
+    const conectada = !!sessoes[c.codigo];
+    div.innerHTML = `
+      <div class="ponto-mini ${conectada ? 'on' : ''}"></div>
+      <div class="info">
+        <div class="nickname">${c.nickname}</div>
+        <div class="codigo">${c.codigo}</div>
+      </div>
+      <span class="remover" onclick="removerConexaoSalva('${c.codigo}', event)">&times;</span>
+    `;
+    container.appendChild(div);
+  });
+}
+
+// --- gerenciamento de sessões (multi-cliente) ---
+
+function iniciarPeer() {
+  const meuId = 'sup-' + Math.random().toString(36).slice(2, 10);
+  peer = new Peer(meuId);
+
+  peer.on('open', () => { peerPronto = true; atualizarStatusGeral('pronto para conectar', false); });
+
+  peer.on('call', (chamada) => {
+    const codigo = chamada.peer;
+    const sessao = sessoes[codigo];
+    if (!sessao) { chamada.close(); return; }
+    sessao.chamada = chamada;
+    chamada.answer();
+    chamada.on('stream', (streamRemoto) => {
+      sessao.stream = streamRemoto;
+      if (codigo === sessaoAtivaCodigo) aplicarStreamNoVideo(streamRemoto);
+    });
+    chamada.on('close', () => {
+      sessao.stream = null;
+      if (codigo === sessaoAtivaCodigo) aplicarStreamNoVideo(null);
+    });
+  });
+
+  peer.on('error', (err) => console.error('erro do peer:', err));
+}
+
+function conectarSessao(codigo, nickname) {
+  if (sessoes[codigo]) { focarSessao(codigo); return; }
+
+  const sessao = {
+    nickname, codigo, dataConn: null, fastConn: null, chamada: null,
+    resolucaoRemota: null, controleHabilitado: false, stream: null,
+    arquivos: [], recebendo: {}, avisoAgente: true,
+  };
+  sessoes[codigo] = sessao;
+
+  // canal confiavel: cliques, teclas, arquivos, metadados
+  const dataConn = peer.connect(codigo, { reliable: true, label: 'dados' });
+  sessao.dataConn = dataConn;
+  dataConn.on('open', () => {
+    renderSidebar();
+    renderAbas();
+    if (codigo === sessaoAtivaCodigo) renderConteudoSessao(codigo);
+  });
+  dataConn.on('data', (dado) => tratarDadoRecebido(codigo, dado));
+  dataConn.on('close', () => desconectarSessao(codigo));
+
+  // canal rapido, sem garantia de entrega: so posicao do mouse (evita fila/delay)
+  const fastConn = peer.connect(codigo, { reliable: false, label: 'rapido' });
+  sessao.fastConn = fastConn;
+  fastConn.on('data', (dado) => tratarDadoRecebido(codigo, dado));
+
+  focarSessao(codigo);
+}
+
+function desconectarSessao(codigo) {
+  const sessao = sessoes[codigo];
+  if (!sessao) return;
+  try { sessao.dataConn && sessao.dataConn.close(); } catch (e) {}
+  try { sessao.fastConn && sessao.fastConn.close(); } catch (e) {}
+  try { sessao.chamada && sessao.chamada.close(); } catch (e) {}
+  delete sessoes[codigo];
+  renderSidebar();
+  renderAbas();
+  if (sessaoAtivaCodigo === codigo) {
+    const restantes = Object.keys(sessoes);
+    focarSessao(restantes.length ? restantes[0] : null);
+  }
+}
+
+function focarSessao(codigo) {
+  sessaoAtivaCodigo = codigo;
+  renderAbas();
+  if (codigo) renderConteudoSessao(codigo);
+  else document.getElementById('conteudo-principal').innerHTML =
+    '<div class="vazio">Conecte-se a uma máquina pela barra lateral para começar.</div>';
+}
+
+function renderAbas() {
+  const container = document.getElementById('abas');
+  container.innerHTML = '';
+  Object.keys(sessoes).forEach(codigo => {
+    const sessao = sessoes[codigo];
+    const div = document.createElement('div');
+    div.className = 'aba' + (codigo === sessaoAtivaCodigo ? ' ativa' : '');
+    div.onclick = () => focarSessao(codigo);
+    div.innerHTML = `<span>${sessao.nickname}</span><span class="fechar-aba" onclick="event.stopPropagation(); desconectarSessao('${codigo}')">&times;</span>`;
+    container.appendChild(div);
+  });
+}
+
+// --- conteudo da sessao focada (tela, controle, arquivos) ---
+
+function renderConteudoSessao(codigo) {
+  const sessao = sessoes[codigo];
+  const container = document.getElementById('conteudo-principal');
+  container.innerHTML = `
+    <div class="cartao">
+      <h2>Tela — ${sessao.nickname}</h2>
+      <div class="linha" style="margin-bottom:4px;">
+        <label style="font-size:13px; display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="chk-controle" ${sessao.controleHabilitado ? 'checked' : ''} onchange="alternarControle()">
+          Habilitar controle de mouse e teclado
+        </label>
+        <button class="secundario mini" id="btn-tela-cheia" onclick="alternarTelaCheia()">Tela cheia</button>
+        <span id="aviso-agente-cliente" style="font-size:12px; color:var(--warn); display:${sessao.avisoAgente ? 'inline' : 'none'};">
+          cliente ainda não abriu o agente de controle
+        </span>
+      </div>
+      <div class="atalhos">
+        <button class="secundario mini" onclick="enviarAtalho(['Meta'])">Win</button>
+        <button class="secundario mini" onclick="enviarAtalho(['Alt','Tab'])">Alt+Tab</button>
+        <button class="secundario mini" onclick="enviarAtalho(['Meta','d'])">Win+D (área de trabalho)</button>
+        <button class="secundario mini" onclick="enviarAtalho(['Meta','e'])">Win+E (explorador)</button>
+        <button class="secundario mini" onclick="enviarAtalho(['Control','Escape'])">Ctrl+Esc (menu iniciar)</button>
+        <button class="secundario mini" onclick="enviarAtalho(['PrintScreen'])">Print Screen</button>
+      </div>
+      <video id="video-remoto" autoplay playsinline tabindex="0"></video>
+      <div class="placeholder-tela" id="placeholder-tela">Aguardando o cliente compartilhar a tela…</div>
+    </div>
+
+    <div class="cartao">
+      <h2>Arquivos</h2>
+      <p class="legenda">Envie um arquivo para o cliente (ex: instalador, driver) ou receba um arquivo que ele enviar.</p>
+      <div class="drop" id="area-drop" onclick="document.getElementById('input-arquivo').click()">
+        Clique aqui ou arraste um arquivo para enviar ao cliente
+      </div>
+      <input type="file" id="input-arquivo" style="display:none" onchange="enviarArquivoSelecionado(event)">
+      <ul class="lista-arquivos" id="lista-arquivos"></ul>
+    </div>
+  `;
+
+  ligarEventosVideo();
+  aplicarStreamNoVideo(sessao.stream);
+  renderArquivos(codigo);
+  ligarEventosDrop();
+}
+
+function aplicarStreamNoVideo(stream) {
+  const video = document.getElementById('video-remoto');
+  const placeholder = document.getElementById('placeholder-tela');
+  if (!video) return;
+  if (stream) {
+    video.srcObject = stream;
+    video.classList.add('ativo');
+    placeholder.style.display = 'none';
+  } else {
+    video.srcObject = null;
+    video.classList.remove('ativo');
+    placeholder.style.display = 'block';
+  }
+}
+
+// --- controle de mouse/teclado ---
+
+let ultimoEnvioMovimento = 0;
+
+function alternarControle() {
+  const sessao = sessoes[sessaoAtivaCodigo];
+  if (!sessao) return;
+  sessao.controleHabilitado = document.getElementById('chk-controle').checked;
+  document.getElementById('video-remoto').classList.toggle('controlavel', sessao.controleHabilitado);
+  if (sessao.controleHabilitado) document.getElementById('video-remoto').focus();
+}
+
+function alternarTelaCheia() {
+  const video = document.getElementById('video-remoto');
+  if (!document.fullscreenElement) {
+    video.requestFullscreen().catch((e) => alert('Não foi possível entrar em tela cheia: ' + e.message));
+  } else {
+    document.exitFullscreen();
+  }
+}
+
+document.addEventListener('fullscreenchange', () => {
+  const btn = document.getElementById('btn-tela-cheia');
+  if (!btn) return;
+  btn.textContent = document.fullscreenElement ? 'Sair da tela cheia' : 'Tela cheia';
+  const sessao = sessoes[sessaoAtivaCodigo];
+  if (document.fullscreenElement && sessao && sessao.controleHabilitado) document.getElementById('video-remoto').focus();
+});
+
+function enviarComandoControle(comando) {
+  const sessao = sessoes[sessaoAtivaCodigo];
+  if (!sessao || !sessao.controleHabilitado) return;
+  // movimento do mouse vai pelo canal rapido (pode perder pacote, nao importa,
+  // so a posicao mais recente interessa); o resto vai pelo canal confiavel
+  const canal = (comando.acao === 'mover' && sessao.fastConn && sessao.fastConn.open) ? sessao.fastConn : sessao.dataConn;
+  if (canal && canal.open) canal.send({ tipo: 'controle', comando });
+}
+
+function enviarAtalho(teclas) {
+  enviarComandoControle({ acao: 'atalho', teclas });
+}
+
+function coordenadasRemotas(evento) {
+  const video = document.getElementById('video-remoto');
+  const sessao = sessoes[sessaoAtivaCodigo];
+  if (!sessao || !sessao.resolucaoRemota) return null;
+  const rect = video.getBoundingClientRect();
+  const fracaoX = (evento.clientX - rect.left) / rect.width;
+  const fracaoY = (evento.clientY - rect.top) / rect.height;
+  return {
+    x: Math.round(fracaoX * sessao.resolucaoRemota.width),
+    y: Math.round(fracaoY * sessao.resolucaoRemota.height),
+  };
+}
+
+function ligarEventosVideo() {
+  const video = document.getElementById('video-remoto');
+
+  video.addEventListener('mousemove', (e) => {
+    const sessao = sessoes[sessaoAtivaCodigo];
+    if (!sessao || !sessao.controleHabilitado) return;
+    const agora = Date.now();
+    if (agora - ultimoEnvioMovimento < 40) return;
+    ultimoEnvioMovimento = agora;
+    const pos = coordenadasRemotas(e);
+    if (pos) enviarComandoControle({ acao: 'mover', x: pos.x, y: pos.y });
+  });
+
+  video.addEventListener('mousedown', (e) => {
+    const sessao = sessoes[sessaoAtivaCodigo];
+    if (!sessao || !sessao.controleHabilitado) return;
+    e.preventDefault();
+    video.focus();
+    const pos = coordenadasRemotas(e);
+    if (pos) enviarComandoControle({ acao: 'clique', x: pos.x, y: pos.y, botao: e.button === 2 ? 'direito' : 'esquerdo' });
+  });
+
+  video.addEventListener('dblclick', (e) => {
+    const sessao = sessoes[sessaoAtivaCodigo];
+    if (!sessao || !sessao.controleHabilitado) return;
+    const pos = coordenadasRemotas(e);
+    if (pos) enviarComandoControle({ acao: 'duplo_clique', x: pos.x, y: pos.y });
+  });
+
+  video.addEventListener('contextmenu', (e) => {
+    const sessao = sessoes[sessaoAtivaCodigo];
+    if (sessao && sessao.controleHabilitado) e.preventDefault();
+  });
+
+  video.addEventListener('wheel', (e) => {
+    const sessao = sessoes[sessaoAtivaCodigo];
+    if (!sessao || !sessao.controleHabilitado) return;
+    e.preventDefault();
+    enviarComandoControle({ acao: 'scroll', dy: e.deltaY });
+  }, { passive: false });
+
+  video.addEventListener('keydown', (e) => {
+    const sessao = sessoes[sessaoAtivaCodigo];
+    if (!sessao || !sessao.controleHabilitado) return;
+    e.preventDefault();
+    enviarComandoControle({
+      acao: 'tecla', tecla: e.key,
+      ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, meta: e.metaKey,
+    });
+  });
+}
+
+// --- transferencia de arquivos ---
+
+const TAMANHO_PEDACO = 16 * 1024;
+
+function ligarEventosDrop() {
+  const areaDrop = document.getElementById('area-drop');
+  areaDrop.addEventListener('dragover', (e) => { e.preventDefault(); areaDrop.classList.add('arraste-sobre'); });
+  areaDrop.addEventListener('dragleave', () => areaDrop.classList.remove('arraste-sobre'));
+  areaDrop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    areaDrop.classList.remove('arraste-sobre');
+    if (e.dataTransfer.files[0]) enviarArquivo(sessaoAtivaCodigo, e.dataTransfer.files[0]);
+  });
+}
+
+function enviarArquivoSelecionado(evento) {
+  const arquivo = evento.target.files[0];
+  if (arquivo) enviarArquivo(sessaoAtivaCodigo, arquivo);
+  evento.target.value = '';
+}
+
+function enviarArquivo(codigo, arquivo) {
+  const sessao = sessoes[codigo];
+  if (!sessao || !sessao.dataConn || !sessao.dataConn.open) { alert('Sessão não conectada.'); return; }
+  const id = 'f' + Date.now();
+  atualizarArquivoItem(codigo, id, { nome: arquivo.name, status: 'enviando', progresso: 0 });
+  sessao.dataConn.send({ tipo: 'inicio-arquivo', id, nome: arquivo.name, tamanho: arquivo.size, mime: arquivo.type });
+
+  const leitor = new FileReader();
+  let offset = 0;
+  function lerProximoPedaco() { leitor.readAsArrayBuffer(arquivo.slice(offset, offset + TAMANHO_PEDACO)); }
+  leitor.onload = () => {
+    sessao.dataConn.send({ tipo: 'pedaco-arquivo', id, dados: leitor.result });
+    offset += leitor.result.byteLength;
+    atualizarArquivoItem(codigo, id, { progresso: offset / arquivo.size });
+    if (offset < arquivo.size) { lerProximoPedaco(); }
+    else { sessao.dataConn.send({ tipo: 'fim-arquivo', id }); atualizarArquivoItem(codigo, id, { status: 'enviado' }); }
+  };
+  lerProximoPedaco();
+}
+
+function tratarDadoRecebido(codigo, dado) {
+  const sessao = sessoes[codigo];
+  if (!sessao) return;
+
+  if (dado.tipo === 'resolucao-tela') {
+    sessao.resolucaoRemota = { width: dado.width, height: dado.height };
+    return;
+  }
+  if (dado.tipo === 'agente-status') {
+    sessao.avisoAgente = !dado.conectado;
+    if (codigo === sessaoAtivaCodigo) {
+      const el = document.getElementById('aviso-agente-cliente');
+      if (el) el.style.display = sessao.avisoAgente ? 'inline' : 'none';
+    }
+    return;
+  }
+  if (dado.tipo === 'inicio-arquivo') {
+    sessao.recebendo[dado.id] = { nome: dado.nome, tamanho: dado.tamanho, mime: dado.mime, pedacos: [], recebido: 0 };
+    atualizarArquivoItem(codigo, dado.id, { nome: dado.nome, status: 'recebendo', progresso: 0 });
+  } else if (dado.tipo === 'pedaco-arquivo') {
+    const r = sessao.recebendo[dado.id]; if (!r) return;
+    r.pedacos.push(dado.dados); r.recebido += dado.dados.byteLength;
+    atualizarArquivoItem(codigo, dado.id, { progresso: r.recebido / r.tamanho });
+  } else if (dado.tipo === 'fim-arquivo') {
+    const r = sessao.recebendo[dado.id]; if (!r) return;
+    const blob = new Blob(r.pedacos, { type: r.mime || 'application/octet-stream' });
+    atualizarArquivoItem(codigo, dado.id, { status: 'recebido', url: URL.createObjectURL(blob) });
+    delete sessao.recebendo[dado.id];
+  }
+}
+
+function atualizarArquivoItem(codigo, id, patch) {
+  const sessao = sessoes[codigo];
+  if (!sessao) return;
+  let item = sessao.arquivos.find(a => a.id === id);
+  if (!item) { item = { id }; sessao.arquivos.unshift(item); }
+  Object.assign(item, patch);
+  if (codigo === sessaoAtivaCodigo) renderArquivos(codigo);
+}
+
+function renderArquivos(codigo) {
+  const ul = document.getElementById('lista-arquivos');
+  if (!ul) return;
+  const sessao = sessoes[codigo];
+  ul.innerHTML = '';
+  sessao.arquivos.forEach(item => {
+    const li = document.createElement('li');
+    const largura = Math.min(100, Math.round((item.progresso || 0) * 100));
+    const statusHtml = item.url
+      ? `<a href="${item.url}" download="${item.nome}">baixar</a>`
+      : `<span style="color:var(--text-dim); font-size:12px;">${item.status}</span>`;
+    li.innerHTML = `<span>${item.nome}</span><div class="barra"><div style="width:${largura}%"></div></div>${statusHtml}`;
+    ul.appendChild(li);
+  });
+}
+
+carregarConexoesSalvas();
+iniciarPeer();
+</script>
+</body>
+</html>
